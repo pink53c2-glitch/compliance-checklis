@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
     // 5. Send the Email via Resend
     await resend.emails.send({
-      from: 'onboarding@resend.dev',
+      from: 'StackGap Security <reports@stackgap.xyz>',
       to: [email],
       subject: 'Your B2B Cybersecurity Compliance Report',
       text: 'Attached is your custom remediation blueprint.',
