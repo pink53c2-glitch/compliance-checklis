@@ -12,6 +12,11 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: ['GPTBot', 'OAI-SearchBot'],
         allow: '/',
       },
+        // Microsoft (Bingbot & MSNBot)
+      {
+        userAgent: ['bingbot', 'MSNBot'],
+        allow: '/',
+      },
       // Perplexity AI
       {
         userAgent: 'PerplexityBot',
