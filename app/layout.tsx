@@ -3,6 +3,7 @@ import { DM_Sans } from 'next/font/google';
 import Link from 'next/link';
 import './globals.css';
 import Navbar from './components/Navbar';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 // ─── Font ─────────────────────────────────────────────────────────────────────
 const dmSans = DM_Sans({ subsets: ['latin'] });
@@ -102,6 +103,7 @@ export default function RootLayout({
           </div>
         </footer>
 
+        <SpeedInsights />
       </body>
     </html>
   );
