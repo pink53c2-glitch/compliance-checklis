@@ -2,6 +2,8 @@
 
 import { useEffect, useState, use } from 'react';
 import { supabase } from '@/lib/supabase';
+// Import your global type from the root folder we set up
+import { ComplianceQuestion } from '../../../types';
 
 // ─── JSON-LD Schema ───────────────────────────────────────────────────────────
 const jsonLdSchema = {
@@ -16,15 +18,6 @@ const jsonLdSchema = {
     "price": "0",
     "priceCurrency": "USD"
   }
-};
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-type Question = {
-  id: string;
-  question_number: number;
-  question_text: string;
-  category?: string;
-  risk_level?: 'critical' | 'high' | 'medium';
 };
 
 type Answers = Record<string, boolean | null>;
@@ -76,24 +69,22 @@ function RiskBadge({ level }: { level?: string }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AssessmentPage({ params }: { params: Promise<{ category: string }> }) {
-  // Phase 2: Dynamic Routing
   const resolvedParams = use(params);
   const categoryKey = resolvedParams.category;
 
-  const [questions, setQuestions]   = useState<Question[]>([]);
+  // Use the new ComplianceQuestion type here
+  const [questions, setQuestions]   = useState<ComplianceQuestion[]>([]);
   const [answers, setAnswers]       = useState<Answers>({});
   const [email, setEmail]           = useState('');
   const [loading, setLoading]       = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [focusedEmail, setFocusedEmail] = useState(false);
-  
-  // New Phase 2 State
   const [showResults, setShowResults] = useState(false);
 
   // Fetch questions from Supabase
   useEffect(() => {
     async function fetchQuestions() {
-      // In the future, you can filter this by categoryKey (e.g., .eq('category', categoryKey))
+      // Your .select('*') is perfect; it already grabs the new affiliate_link column automatically!
       const { data, error } = await supabase
         .from('compliance_questions')
         .select('*')
@@ -106,7 +97,6 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
     fetchQuestions();
   }, [categoryKey]);
 
-  // If they type a category that doesn't exist yet
   if (categoryKey !== 'cybersecurity' && !loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
@@ -123,7 +113,6 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
   const progress       = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
   const atRiskCount    = Object.values(answers).filter(v => v === false).length;
   
-  // Calculate Score out of 100
   const safeAnswers = Object.values(answers).filter(v => v === true).length;
   const score = totalQuestions > 0 ? Math.round((safeAnswers / totalQuestions) * 100) : 0;
 
@@ -131,34 +120,45 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
 
     try {
-      // 1. Send the data to your API to email the PDF
       const response = await fetch('/api/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, answers }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      // Read response as raw text first
+      const rawText = await response.text();
 
-      // 2. Flip the UI to show the high-impact score screen!
+      // If the server returned a 500 error, extract the message and throw it intentionally
+      if (!response.ok) {
+        try {
+          const errorJson = JSON.parse(rawText);
+          throw new Error(errorJson.error || `Status ${response.status}`);
+        } catch {
+          // Fallback if the response text isn't JSON stringified
+          throw new Error(`Status ${response.status}: ${rawText.substring(0, 100)}`);
+        }
+      }
+
+      const data = JSON.parse(rawText);
+
       setSubmitting(false);
       setShowResults(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Submission error:', error);
-      alert('There was a problem generating your report. Please try again.');
+      // >>> THIS WILL NOW PRINT THE LITERAL BACKEND CRASH REASON ON SCREEN <<<
+      alert(`Backend Error: ${error.message}`);
       setSubmitting(false); 
     } 
   };
 
-  // ── Loading state ────────────────────────────────────────────────────────
   if (loading) {
     return (
       <main style={styles.root}>
@@ -170,13 +170,9 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
     );
   }
 
-  // ── Main render ──────────────────────────────────────────────────────────
   return (
     <main style={styles.root}>
-      {/* JSON-LD Schema */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSchema) }} />
-
-      {/* Ambient background glow */}
       <div style={styles.bgGlow} aria-hidden />
 
       <div style={styles.container}>
@@ -198,7 +194,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
               </p>
             </header>
 
-            {/* Progress bar */}
+            {/* Progress Bar */}
             {totalQuestions > 0 && (
               <div style={styles.progressWrap}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -218,7 +214,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
               </div>
             )}
 
-            {/* Form */}
+            {/* Assessment Form */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {questions.length === 0 ? (
                 <div style={styles.errorBox}>
@@ -242,9 +238,10 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
                         <span style={styles.questionNum}>
                           {String(q.question_number).padStart(2, '0')}
                         </span>
-                        {q.risk_level && <RiskBadge level={q.risk_level} />}
-                        {q.category && (
-                          <span style={styles.categoryPill}>{q.category}</span>
+                        {/* Safe navigation because risk_level exists in database or our types */}
+                        {q.hasOwnProperty('risk_level') && (q as any).risk_level && <RiskBadge level={(q as any).risk_level} />}
+                        {q.tool_category && (
+                          <span style={styles.categoryPill}>{q.tool_category}</span>
                         )}
                       </div>
 
@@ -305,7 +302,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
                 })
               )}
 
-              {/* Email capture */}
+              {/* Email Capture */}
               <div style={styles.emailBlock}>
                 <label style={styles.emailLabel}>Work email address</label>
                 <p style={styles.emailHelper}>Your personalized PDF report will be sent here.</p>
@@ -325,7 +322,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
                 />
               </div>
 
-              {/* Submit */}
+              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={submitting || answeredCount < totalQuestions || !email}
@@ -352,7 +349,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
             </form>
           </>
         ) : (
-          // ── Results View ──
+          // ── Results View (Dynamic Affiliate Payout Machinery) ──
           <div style={{ animation: 'fadeUp 0.5s ease both', textAlign: 'center' }}>
             <div style={styles.eyebrow}>Analysis Complete</div>
             
@@ -360,7 +357,6 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
               StackGap Health Score
             </h3>
             
-            {/* The Psychological Score */}
             <div style={{ 
               fontSize: '5rem', 
               fontWeight: 800, 
@@ -375,12 +371,11 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
               📊 Companies in your tier average a score of <strong>68/100</strong>. You have <strong>{atRiskCount} critical vulnerabilities</strong> exposing your infrastructure.
             </p>
             
-            {/* The PDF Notice */}
             <p style={{ color: '#fff', fontSize: '15px', marginBottom: '2rem' }}>
               A detailed PDF remediation report has been securely emailed to <strong>{email}</strong>.
             </p>
 
-            {/* List the specific failed questions to show affiliate links */}
+            {/* List the specific failed questions to show live links */}
             <div style={{ textAlign: 'left', marginTop: '2rem', borderTop: '1px solid #1e1e1e', paddingTop: '2rem' }}>
               <h4 style={{ color: '#fff', marginBottom: '1rem' }}>Identified Security Gaps:</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -393,10 +388,21 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
                           Missing: {q.question_text}
                         </p>
                         
-                        {/* THIS IS WHERE YOUR AFFILIATE LINKS GO BASED ON THE QUESTION! */}
-                        <a href="#" style={{ fontSize: '12px', color: '#ff4d4d', textDecoration: 'underline' }}>
-                          View recommended SaaS remediation tool &rarr;
-                        </a>
+                        {/* DYNAMIC CONVERSION LINK ENGINE */}
+                        {q.affiliate_link ? (
+                          <a 
+                            href={q.affiliate_link} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            style={{ fontSize: '12px', color: '#22c55e', textDecoration: 'underline', fontWeight: 500 }}
+                          >
+                            Deploy Recommended SaaS Solution &rarr;
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: '#444', fontStyle: 'italic' }}>
+                            Manual Remediation Blueprint detailed in your PDF report.
+                          </span>
+                        )}
                       </div>
                     );
                   }
@@ -414,7 +420,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ category:
           </div>
         )}
 
-        {/* Footer trust signals */}
+        {/* Footer */}
         <footer style={styles.footer}>
           <span>No account required</span>
           <span style={styles.footerDot}>·</span>
@@ -670,4 +676,4 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
-};
+}
