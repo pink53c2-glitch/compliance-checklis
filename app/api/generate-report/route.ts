@@ -141,6 +141,9 @@ export async function POST(request: Request) {
     }
 
     // ── VULNERABILITY CARDS ──────────────────────────────────────
+    const BADGE_BAND_H = 9;   // dedicated header band for VULN ID — no overlap ever
+    const LINK_BLOCK_H = 22;  // tall enough for label + url line
+
     if (failedQuestionIds.length > 0) {
       const { data: questions, error: dbError } = await supabase
         .from('compliance_questions')
@@ -153,24 +156,26 @@ export async function POST(request: Request) {
         questions.forEach((q) => {
           gapsFound++;
 
-          // Pre-calculate line wraps to determine card height
+          // Full content width — badge is in its own band, not floating over text
+          const TEXT_X   = ML + 9;
+          const TEXT_W   = CW - 13;
+
+          // Pre-calculate wraps at correct widths
           doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
-          const qLines = doc.splitTextToSize(q.question_text, CW - 22);
+          const qLines = doc.splitTextToSize(q.question_text, TEXT_W);
 
           doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-          const gLines = doc.splitTextToSize(`IMPACT  ·  ${q.security_gap}`, CW - 18);
+          const gLines = doc.splitTextToSize(`IMPACT  ·  ${q.security_gap}`, TEXT_W);
 
-          const linkBlockH  = q.affiliate_link ? 14 : 0;
           const cardH =
-            10                          // top padding
-            + qLines.length * 5.5       // question text
-            + 4                         // gap
-            + gLines.length * 4.5       // impact text
-            + (q.affiliate_link ? 8 : 4) // pre-link gap or bottom pad
-            + linkBlockH                 // link block
-            + 6;                         // bottom padding
+            BADGE_BAND_H              // header band with VULN ID
+            + 8                        // top padding before question
+            + qLines.length * 5.5      // question text
+            + 5                        // gap
+            + gLines.length * 4.5      // impact text
+            + (q.affiliate_link ? LINK_BLOCK_H + 10 : 8); // link block or bottom pad
 
-          // Page overflow guard — check before drawing
+          // Page overflow guard — always check BEFORE drawing
           if (y + cardH > 278) {
             drawFooter();
             doc.addPage();
@@ -178,35 +183,51 @@ export async function POST(request: Request) {
             y = 20;
           }
 
-          // ── Card shell ──────────────────────────────────────
+          // ── Card background ──────────────────────────────────
           f(ZINC_100); doc.rect(ML, y, CW, cardH, 'F');
 
-          // Red left accent bar (the signature element)
+          // ── Red left accent bar ──────────────────────────────
           f(RED); doc.rect(ML, y, 3.5, cardH, 'F');
 
-          // ── VULN ID badge (top-right of card) ───────────────
+          // ── VULN ID header band (its own row — no overlap) ───
+          f(ZINC_200); doc.rect(ML + 3.5, y, CW - 3.5, BADGE_BAND_H, 'F');
           const badgeText = `VULN-${String(q.id).padStart(3, '0')}`;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
-          const badgeW = doc.getTextWidth(badgeText) + 7;
-          f(RED_FAINT); doc.rect(PW - ML - badgeW, y + 4, badgeW, 8, 'F');
-          t(RED); doc.text(badgeText, PW - ML - badgeW + 3.5, y + 9.5);
+          t(ZINC_500); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+          doc.text(badgeText, PW - ML - 4, y + 6.2, { align: 'right' });
 
-          // ── Question text ────────────────────────────────────
-          let cy = y + 10;
+          // ── Question text (full width, no badge competing) ───
+          let cy = y + BADGE_BAND_H + 8;
           t(BLACK); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
-          doc.text(qLines, ML + 9, cy);
-          cy += qLines.length * 5.5 + 4;
+          doc.text(qLines, TEXT_X, cy);
+          cy += qLines.length * 5.5 + 5;
 
           // ── Impact text ──────────────────────────────────────
           t(ZINC_500); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-          doc.text(gLines, ML + 9, cy);
+          doc.text(gLines, TEXT_X, cy);
           cy += gLines.length * 4.5 + 8;
 
-          // ── Affiliate fix link ───────────────────────────────
+          // ── Affiliate link block (clickable) ─────────────────
           if (q.affiliate_link) {
-            f(BLUE_FAINT); doc.rect(ML + 9, cy - 2, CW - 13, 10, 'F');
-            t(BLUE); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
-            doc.text(`\u2192  ${q.affiliate_link}`, ML + 13, cy + 4.5);
+            const LX = ML + 9;
+            const LW = CW - 13;
+
+            // Blue background block
+            f(BLUE_FAINT); doc.rect(LX, cy, LW, LINK_BLOCK_H, 'F');
+
+            // Button label line
+            t(BLUE); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+            doc.text('\u2192  Deploy Recommended Fix', LX + 5, cy + 7);
+
+            // URL line — truncated to fit, keeps it readable
+            const maxChars = 72;
+            const urlDisplay = q.affiliate_link.length > maxChars
+              ? q.affiliate_link.substring(0, maxChars - 1) + '\u2026'
+              : q.affiliate_link;
+            t(ZINC_400); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+            doc.text(urlDisplay, LX + 5, cy + 14);
+
+            // ✅ Clickable annotation over the entire block
+            doc.link(LX, cy, LW, LINK_BLOCK_H, { url: q.affiliate_link });
           }
 
           y += cardH + 5;
