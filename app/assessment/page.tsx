@@ -118,12 +118,13 @@ const categories = [
     color: 'border-emerald-500/30 hover:border-emerald-500',
   },
   {
-    slug: 'cloud-infrastructure',
-    title: 'Cloud Infrastructure & DevOps',
-    desc: 'Evaluate AWS/GCP architecture, CI/CD pipeline gaps, cloud backup policies, and server efficiency.',
-    icon: '☁️',
-    status: 'Coming Soon' as const,
-    color: 'border-zinc-800 opacity-60 cursor-not-allowed',
+
+  slug: 'darkweb', 
+  title: 'Dark Web & Threat Intel', 
+  desc: 'Scan your corporate domain against criminal forums to identify compromised credentials.',
+  status: 'Live' as const,
+  href: '/assessment/darkweb' // This is the crucial part that links to our new code!
+
   },
   {
     slug: 'marketing-stack',

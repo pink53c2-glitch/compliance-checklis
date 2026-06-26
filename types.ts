@@ -5,4 +5,5 @@ export interface ComplianceQuestion {
   created_at: string;
   question_text: string;
   affiliate_link?: string | null;
+  security_gap?: string | null;
 }
